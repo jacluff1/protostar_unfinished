@@ -1,0 +1,7 @@
+In the Life of a Protostar
+
+Jacob Cluff, Kelsie Crawford
+
+In this model, we take several clouds of different mass and determine how long it will take for the cloud core to get hot enough to allow for sustainable nuclear fusion and how long it will take for the cloud to collapse. The general approach we take is to calculate the Jean's radius for each cloud, the volume (assuming spherical symmetry), and then the density. For now, we are assuming a free fall and adiabadic collapse, but we plan on including gas pressure in the future. We calculate the adiabadic constant and use the changing volume to calculate shell temperatures; for the core temperature, we use the virial theorem and the change in the potential energy of the collapsing cloud. For our 60 solar mass cloud, the core gets hot enough after .003 Myr and the free fall collapse occurs at 1.6 Myr.
+
+Code is available at <https://github.com/ASU-CompMethodsPhysics-PHY494/final-2017-beta-team>
