@@ -1,0 +1,9 @@
+$ git status
+
+# ignore file types
+**.pyc
+**.npy
+**.pdf
+
+# ignore files
+__pycache__/**
