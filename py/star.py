@@ -18,4 +18,5 @@ model   =   aux.model_params(Np,Mc,T0,frac_H,frac_He)
 """ Make Plots """
 #-------------------------------------------------------------------------------
 
-# plot_scatter    =   aux.plot_3D_scatter(model,0)
+aux.plot_3D_scatter(model,0)
+aux.plot_2D_contourf(model,0)

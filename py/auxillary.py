@@ -404,7 +404,7 @@ def map_grid(X,Y,RHO):
 
     return Xp,Yp,Zp
 
-def plot_3D_scatter(model,t):
+def plot_3D_scatter(model,t,saveA=True):
     """ make a 3D scatter plot of
     particles at time t
 
@@ -423,12 +423,14 @@ def plot_3D_scatter(model,t):
     limits  =   0,np.max(rho)
 
     # figure
+    plt.close('all')
     fig     =   plt.figure(figsize=pp['size'])
     ax      =   fig.add_subplot(111, projection='3d')
     ax.set_title("%s M$_\odot$ cloud, t = %s" % (Mc,time), fontsize=pp['fs']+2)
     ax.set_xlabel("x [%s]" % pc.units, fontsize=pp['fs'])
     ax.set_ylabel("y [%s]" % pc.units, fontsize=pp['fs'])
     ax.set_zlabel("z [%s]" % pc.units, fontsize=pp['fs'])
+    ax.set_aspect(1)
 
     levels  =   MaxNLocator(nbins=100).tick_values(*limits)
     cmap    =   pp['cmap']
@@ -439,9 +441,17 @@ def plot_3D_scatter(model,t):
     cbar.set_label('$\\rho$ [ %s / %s$^2$ ]' % (dc.kg.units,dc.m.units), fontsize=pp['fs'])
 
     plt.tight_layout()
-    plt.show()
 
-def plot_2D_contourf(model,t):
+    if saveA:
+        fig.savefig('../plots/scatter_%.2f_%.2f.png' % (Mc,time))
+        plt.close()
+
+    else:
+        plt.show()
+
+
+
+def plot_2D_contourf(model,t,saveA=True):
     """ make a 2D contour plot of
     particles at time t
     http://stackoverflow.com/a/23907866
@@ -463,12 +473,14 @@ def plot_2D_contourf(model,t):
     limits      =   0,np.max(Zp)
 
     # figure
+    plt.close('all')
     fig     =   plt.figure(figsize=pp['size'])
     ax      =   fig.add_subplot(111)
     ax.patch.set_facecolor('black')
     ax.set_title("%s M$_\odot$ cloud, t = %s" % (Mc,time), fontsize=pp['fs']+2)
     ax.set_xlabel("x [%s]" % pc.units, fontsize=pp['fs'])
     ax.set_ylabel("y [%s]" % pc.units, fontsize=pp['fs'])
+    ax.set_aspect(1)
 
     levels  =   MaxNLocator(nbins=100).tick_values(*limits)
     cmap    =   pp['cmap']
@@ -479,4 +491,9 @@ def plot_2D_contourf(model,t):
     cbar.set_label('$\\rho$ [ %s / %s$^2$ ]' % (dc.kg.units,dc.m.units), fontsize=pp['fs'])
 
     plt.tight_layout()
-    plt.show()
+
+    if saveA:
+        fig.savefig('../plots/contourf_%.2f_%.2f.png' % (Mc,time))
+        plt.close()
+    else:
+        plt.show()
