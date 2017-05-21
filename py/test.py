@@ -37,6 +37,7 @@ def test_model_setup():
     # test that the mass of the cloud is consistent after SPH
     Mc      =   model['Mc']
     rho     =   model['rho'][0]
+    rho_av  =   np.average(rho)
     vol     =   (4/3) * np.pi * h**3
     M       =   np.sum(rho * vol)
     assert all(( M/Mc > .9 , M/Mc < 1.1 )), "mass is inconsistent after SPH"
