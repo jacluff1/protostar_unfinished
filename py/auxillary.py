@@ -9,81 +9,54 @@ import pandas as pd
 """ Initializing Functions """
 #-------------------------------------------------------------------------------
 
-def average_particle_mass(par):
+def average_particle_mass(p):
     """ find the average particle mass
     from particle populations
 
-    Parameters
-    ----------
-    par:    dictionary of model parameters
+    args
+    ----
+    p:  dictionary  -   assumed values
 
-    Returns
+    returns
     -------
     scalar
     """
-    frac_H  =   par['frac_H']
-    frac_He =   par['frac_He']
+
+    frac_H  =   p['frac_H']
+    frac_He =   p['frac_H']
 
     return frac_H*SI['m_H'].value + frac_He*SI['m_He'].value
 
-def polytropic_pressure_constant(par):
-    """ find the polytropic pressure constant
-    1) use PV = (M/mu) * k T
-    2) solve for P
-    3) P = K rho^( 1 + 1/n )
-    4) solve for K
-
-    Parameters
-    ----------
-    par:    dictionary of model parameters
-
-    Returns
-    -------
-    scalar
-    """
-
-    Mc      =   par['Mc']
-    mu      =   par['mu']
-    k       =   SI['k']
-    T0      =   par['T0']
-    Rj      =   par['Rj']
-    n       =   par['n']
-
-    V       =   (4/3) * np.pi * Rj**3
-
-    return ( Mc / mu) * ( k * T0 / V ) * 1/rho0**( 1 + 1/n )
-
-def initial_angular_frequency(par):
+def initial_rotation_vectors(model):
     """ find initial angular frequency
     http://www.am.ub.edu/~robert/master/03-clouds.pdf
 
-    Parameters
-    ----------
-    par:    dictionary of model parameters
-
-    Returns
-    -------
-    scalar
+    args
+    ----
+    model:  Series   -   model data
     """
 
-    Rj      =   par['Rj'] * pc.value
+    Np      =   model['Np']
+    Rj      =   model['Rj'] * pc.value
 
-    return Rj**(-.56) * 10**(.34) * 1e-14
+    omag    =   Rj**(-.56) * 10**(.34) * 1e-14
+    ohats   =   np.zeros(( Np , 3 ))
 
-def initial_SP_placement(par):
+    Omega0  =   omag * ohats
+
+    model['Omega'][0,:,:]   =   Omega0
+
+def initial_SP_placement(model):
     """ generate randome particle positions
     for all particles
 
-    Parameters
-    ----------
-    par:    dictionary of model parameters
-
-    Returns
-    -------
-    2D array
+    args
+    ----
+    model:  Series   -   model data
     """
 
-    Rj     =   par['Rj']
+    Np      =   model['Np']
+    Rj      =   model['Rj']
 
     # set up random positions in spherical coordinates
     radius  =   np.random.rand(Np) * Rj
@@ -91,46 +64,67 @@ def initial_SP_placement(par):
     phi     =   np.random.rand(Np) * 2*np.pi
 
     # convert spherical coordinates to cartesian
-    X       =   radius * np.sin(theta) * np.cos(phi)
-    Y       =   radius * np.sin(theta) * np.sin(phi)
-    Z       =   radius * np.cos(theta)
+    x       =   radius * np.sin(theta) * np.cos(phi)
+    y       =   radius * np.sin(theta) * np.sin(phi)
+    z       =   radius * np.cos(theta)
 
-    R0      =   np.vstack((X,Y,Z)).T
+    r0      =   np.vstack((x,y,z)).T
 
-    return R0
+    model['r'][0,:,:]   =   r0
 
-def initial_SP_velocities(par):
+def initial_SP_velocities(model):
     """ find initial velocities
     1) random velocities with some average dispersion
     2) motion includes a net rotation around z-axis
 
-    Parameters
-    ----------
-    par:    dictionary of model parameters
-
-    Returns
-    -------
-    tuple of 3 1D arrays
+    args
+    ----
+    model:  Series  -   model data
     """
 
-    R0      =   par['R0']
-    Omega0  =   par['Omega0'] * np.array([ 0 , 0 , 1 ])
-    Np      =   par['Np']
-    disp    =   par['disp']
+    Np      =   model['Np']
+    disp    =   model['disp']
+    r0      =   model['r'][0,:,:]
+    Omega0  =   model['Omega'][0,:,:]
 
-    Z0      =   R0[:,2]
-    Rz      =   R0 - Z0
-    Rz_mag  =   np.array([ np.linalg.norm( Rz[i,:] ) for i in range(Np) ])
-    Vrot    =   np.cross( Omega0 , Rz )
-    Vrotx   =   np.dot( Vrot , np.array([ 1 , 0 , 0 ]))
-    Vroty   =   np.dot( Vrot , np.array([ 0 , 1 , 0 ]))
+    vrot    =   np.array([ np.cross( Omega0[i] , r0[i] ) for i in range(Np) ])
+    vrotx   =   np.array([ np.dot( vrot[i] , np.array([ 1 , 0 , 0 ]) ) for i in range(Np) ])
+    vroty   =   np.array([ np.dot( vrot[i] , np.array([ 0 , 1 , 0 ]) ) for i in range(Np) ])
 
-    Vx      =   np.random.rand(Np) * disp + Vrotx
-    Vy      =   np.random.rand(Np) * disp + Vroty
-    Vz      =   np.random.rand(Np) * disp
+    vx      =   np.random.rand(Np) * disp + vrotx
+    vy      =   np.random.rand(Np) * disp + vroty
+    vz      =   np.random.rand(Np) * disp
 
-    V0      =   np.vstack((Vx,Vy,Vz)).T
-    return V0
+    v0      =   np.vstack((vx,vy,vz)).T
+
+    model['v'][0,:,:]   =   v0
+
+def polytropic_pressure_constant(model):
+    """ find the polytropic pressure constant
+    1) use PV = (M/mu) * k T
+    2) solve for P
+    3) P = K rho^( 1 + 1/n )
+    4) solve for K
+
+    args
+    ----
+    model:  Series  -   model data
+    """
+
+    k       =   SI['k'].value
+
+    Mc      =   model['Mc']
+    T0      =   model['T0']
+    Rj      =   model['Rj']
+    n       =   model['n']
+    mu      =   model['mu']
+    rho0    =   model['rho'][0,:]
+
+    V       =   (4/3) * np.pi * Rj**3
+
+    K       =  ( Mc / mu) * ( k * T0 / V ) * 1/rho0**( 1 + 1/n )
+
+    model['K']  =   K
 
 #===============================================================================
 """ Misc """
@@ -139,12 +133,12 @@ def initial_SP_velocities(par):
 def r_vec(ri,rj):
     """ find the relative position vector
 
-    Parameters
-    ----------
-    r0:     object particle position
-    ri:     ajent particle position
+    args
+    ----
+    r0:     vector  -   particle position
+    ri:     vector  -   particle position
 
-    Returns
+    returns
     -------
     tuple - rmag,rhat
     """
@@ -174,17 +168,17 @@ def r_vec(ri,rj):
 def kernal_gauss(ri,rj,h):
     """ Gaussian method for kernal Smoothing
 
-    Parameters
-    ----------
-    ri:     object particle position
-    rj:     agent particle position
-    h:      smoothing length
+    args
+    ----
+    ri:     vector  -   object particle position
+    rj:     vector  -   agent particle position
+    h:      scalar  -   smoothing length
 
-    Returns
+    returns
     -------
     scalar
     """
-    # rmag,rhat   =   r_vec(ri,rj)
+
     rmag = np.linalg.norm( ri - rj )
 
     return ( h * np.sqrt(np.pi) )**(-3) * np.exp( -rmag**2 / h**2 )
@@ -193,15 +187,15 @@ def gradient_kernal_gauss(ri,rj,h):
     """ returns the gradient of the
     gaussian kernal smoothing function
 
-    Parameters
-    ----------
-    ri:     object particle position
-    rj:     agent particle position
-    h:      kernal smoothing length
+    args
+    ----
+    ri:     vector  -   object particle position
+    rj:     vector  -   agent particle position
+    h:      scalar  -   kernal smoothing length
 
-    Returns
+    returns
     -------
-    vector array
+    vector
     """
 
     W       =   kernal_gauss(ri,rj,h)
@@ -211,73 +205,81 @@ def gradient_kernal_gauss(ri,rj,h):
 """ Cloud Physics """
 #-------------------------------------------------------------------------------
 
-def pressure(rho,par):
-    """ find the pressure of polytropic fluid
-
-    Parameters
-    ----------
-    rho:    density
-    par:    dictionary of model parameters
-
-    Returns
-    -------
-    scalar - pressure
-    """
-
-    Kj      =   par['Kj']
-    n       =   par['n']
-
-    return Kj * rho**( 1 + 1/n )
-
-def density(Rt,r,h,par):
+def density(r,rdot,t,i,model):
     """ find density of SPH
 
-    Parameters
-    ----------
-    Rt:     2D SPH particle positions at time t
-    r:      position vector of interest
-    h:      smoothing length
-    par:    dictionary of model parameters
+    args
+    ----
+    r:      vector  -   position of interest
+    t:      int     -   time index
+    i:      int     -   particle index
+    model:  Series  -   model data
 
-    Returns
+    returns
     -------
     scalar
     """
 
-    Mc      =   par['Mc']
-    Np      =   par['Np']
+    Mc      =   model['Mc']
+    Np      =   model['Np']
+    rt      =   model['r'][t,:,:]
+    h       =   model['h'][t]
 
     # mnras181-0375.pdf
     total   =   0
     for j in range(Np):
-        rj      =   Rt[j,:]
+        rj      =   rt[j,:]
         total   +=  kernal_gauss(r,rj,h)
 
     rho     =   (Mc/Np) * total
     return rho
 
-def gradient_density(Rt,r,h,par):
+def pressure(r,rdot,t,i,model):
+    """ find the pressure of polytropic fluid
+
+    args
+    ----
+    r:      vector  -   position of interest
+    t:      int     -   time index
+    i:      int     -   particle index
+    model:  Series  -   model data
+
+    returns
+    -------
+    scalar
+    """
+
+    K       =   model['K'][i]
+    n       =   model['n']
+    rho     =   model['rho'][t,i]
+
+    return K * rho**( 1 + 1/n )
+
+def gradient_density(r,rdot,t,i,model):
     """ find the density gradient
     calculated by hand
     multipy rho by -(2/h^2) and sum uj vectors
 
-    Parameters
-    ----------
-    Rt:     2D SPH positions at time t
-    r:      position vector
-    h:      smoothing length
-    par:    dictionary of model parameters
+    args
+    ----
+    r:      vector  -   position of interest
+    t:      int     -   time index
+    i:      int     -   particle index
+    model:  Series  -   model data
 
     returns
-    vector array
+    -------
+    vector
     """
 
-    Np      =   par['Np']
+    Np      =   model['Np']
+    rt      =   model['r'][t,:,:]
+    h       =   model['h'][t]
+    rho     =   model['rho'][t,i]
 
-    rho     =   density(Rt,r,h,par)
     total   =   0
     for j in range(Np):
-        rj      =   Rt[j]
+        rj      =   rt[j,:]
         uj      =   r - rj
         total   +=  uj
 
@@ -287,30 +289,32 @@ def gradient_density(Rt,r,h,par):
 """ Equations of Motion """
 #-------------------------------------------------------------------------------
 
-def acc_gravity(Rt,r,h,par):
+def acc_gravity(r,rdot,t,i,model):
     """ find acceleration from Gaussian smoothing
     gravitational potential
 
-    Parameters
-    ----------
-    Rt:     SPH particle positions (2D array)
-    r:      position vector
-    h:      smoothing length
-    par:    dictionar of model parameters
+    args
+    ----
+    r:      vector  -   position of interest
+    t:      int     -   time index
+    i:      int     -   particle index
+    model:  Series  -   model data
 
-    Returns
+    returns
     -------
-    vector array
+    vector
     """
 
-    f       =   1 / h**2
     G       =   SI['G']
-    Mc      =   par['Mc']
-    Np      =   par['Np']
+    rt      =   model['r'][t,:,:]
+    Mc      =   model['Mc']
+    Np      =   model['Np']
+    h       =   model['h'][t]
+    f       =   1 / h**2
 
     total   =   0
     for j in range(Np):
-        u           =   r - Rt[j]
+        u           =   r - rt[j]
         uj,ujhat    =   r_vec(u)
         one         =   ( 2 / uj ) * np.sqrt( f / np.pi )
         two_1       =   np.exp( -f * uj**2 )
@@ -320,72 +324,84 @@ def acc_gravity(Rt,r,h,par):
 
     return - ( G * Mc / Np ) * total
 
-def acc_polytrope_pressure(rho,grad_rho,par):
+def acc_polytrope_pressure(r,rdot,t,i,model):
     """ acceleration from polytropic pressure
 
-    Parameters
-    ----------
-    K:          polytropic pressure constant
-    n:          polytropic index
-    rho:        density
-    grad_rho:   gradient of density
+    args
+    ----
+    r:      vector  -   position of interest
+    t:      int     -   time index
+    i:      int     -   particle index
+    model:  Series  -   model data
 
-    Returns
+    returns
     -------
-    vector array
+    vector
     """
 
-    Kj      =   par['Kj']
-    n       =   par['n']
+    n           =   model['n']
+    rho         =   model['rho'][t,i]
+    grad_rho    =   model['grad_rho'][t,i,:]
+    K           =   model['K'][i]
 
-    return - K * rho**( 1/n - 1 ) * ( grad_rho / n ) * ( 1 + n )
+    return K * rho**( 1/n - 1 ) * ( grad_rho / n ) * ( 1 + n )
 
-def acc_centrifugal(Omega,rj):
+def acc_centrifugal(r,rdot,t,i,model):
     """ acceleration from centrifugal force
 
-    Parameters
-    ----------
-    Omega:      angular velocity
-    rj:         position of SPH particle
+    args
+    ----
+    r:      vector  -   position of interest
+    t:      int     -   time index
+    i:      int     -   particle index
+    model:  Series  -   model data
 
-    Returns
+    returns
     -------
-    velocity array
+    vector
     """
 
-    return np.cross( np.cross(Omega,rj) , Omega )
+    Omega   =   model['Omega'][t,i,:]
 
-def acc_coriolis(Omega,rj_dot):
+    return np.cross( Omega , np.cross(Omega,r) )
+
+def acc_coriolis(r,rdot,t,i,model):
     """ acceleration from coriolis force
 
-    Parameters
-    ----------
-    Omega:      angular velocity
-    r:          position (of SPH particle?)
+    args
+    ----
+    r:      vector  -   position of interest
+    t:      int     -   time index
+    i:      int     -   particle index
+    model:  Series  -   model data
 
-    Returns
+    returns
     -------
-    vector array
+    vector
     """
 
-    return 2 * np.cross( rj_dot , Omega )
+    Omega   =   model['Omega'][t,i,:]
 
-def acc_damping(rj_dot,par):
+    return 2 * np.cross( rdot , Omega )
+
+def acc_damping(r,rdot,t,i,model):
     """ acceleration from internal friction
 
-    Parameters
-    ----------
-    rj_dot: velociy of SPH particle j
-    par:    dictionary of model parameters
+    args
+    ----
+    r:      vector  -   position of interest
+    t:      int     -   time index
+    i:      int     -   particle index
+    model:  Series  -   model data
 
-    Returns
+    returns
     -------
-    vector array
+    vector
     """
 
-    Lambda      =   par['Lambda']
+    Lambda      =   model['Lambda']
 
-    return - Lambda * rj_dot
+    return Lambda * rdot
 
 # def acc_magnetic(J,B,rho):
 #     """ acceleration from magnetic force
@@ -403,170 +419,90 @@ def acc_damping(rj_dot,par):
 #     raise NotImplementedError
 #     return np.cross( J , B ) / rho
 
-# def acc_particle_external(M,Rt,i):
-#     """ find acceleration of particle
-#     due to external forces
-#
-#     Parameters
-#     ----------
-#     M:      1D array of particles masses
-#     Rt:     2D array of particle positions at time t
-#     i:      index of particle
-#
-#     Returns
-#     -------
-#     vector array
-#     """
-#
-#     # # particle information
-#     # Np      =   len(M)
-#     # ri      =   Rt[i,:]
-#     #
-#     # # interactions with other particles
-#     # total   =   0
-#     # for j in range(Np):
-#     #     if j!= i:
-#     #         rj      =   Rt[j,:]
-#     #         mj      =   M[j]
-#     #         total   +=  acc_gravity(ri,rj,mj)
-#     #
-#     # return
+def acc_total(r,rdot,t,i,model):
+    """ returns total acceleration of particle
 
-def acc_particle(Rt,Vt,rhot,rho_gradt,i,h,par):
-    # """ returns total acceleration of particle
-    #
-    # Parameters
-    # ----------
-    # Rt:     2D array of SPH particle posiions at time t
-    # Vt:     2D array of SPH particle velocities at time t
-    # i:      index of SPH particle
-    # h:      smoothing length
-    # par:    dictionar of model parameters
-    #
-    # Returns
-    # -------
-    # vector array
-    # """
+    args
+    ----
+    r:      vector  -   position of interest
+    t:      int     -   time index
+    i:      int     -   particle index
+    model:  Series  -   model data
 
-    ri          =   Rt[i]
-    rho         =   density(Rt,ri,h,par)
+    returns
+    -------
+    vector
+    """
 
+    damping     =   acc_damping(r,rdot,t,i,model)
+    pressure    =   acc_polytrope_pressure(r,rdot,t,i,model)
+    gravity     =   acc_gravity(r,rdot,t,i,model)
+    centrifugal =   acc_centrifugal(r,rdot,t,i,model)
+    coriolis    =   acc_coriolis(r,rdot,t,i,model)
+    magnetic    =   0
 
-    gravity     =   acc_gravity(Rt,ri,h,par)
-    pressure    =   acc_polytrope_pressure(rho,grad_rho,par)
-
-
-
-
-    return 
+    return - (damping + pressure + gravity + centrifugal + coriolis) + magnetic
 
 #===============================================================================
 """ Choosing dt and h """
 #-------------------------------------------------------------------------------
 
-def choose_h(Rt,alpha=1):
+def choose_h(r,rdot,t,i,model):
     """ choose smoothing length
     another method could be to choose h
     for each particle such that there are
     k variables enclosed by radius h around
     each particle
 
-    Parameters
-    ----------
-    Rt:     2D array of particle positions at time t
-    alpha:  ** factor to multiply result by
+    args
+    ----
+    r:      vector  -   position of interest
+    t:      int     -   time index
+    i:      int     -   particle index
+    model:  Series  -   model data
 
-    Returns
+    returns
     -------
-    scalar
+    vector
     """
 
-    r1      =   np.average( Rt**2 )
-    r2      =   np.average( Rt )**2
+    r       =   model['r'][t,:,:]
+    Np      =   model['Np']
+    alpha   =   model['alpha']
+
+    r1      =   np.average( np.array([ np.linalg.norm(r[j,:])**2 for j in range(Np) ]) )
+    r2      =   np.average( np.array([ np.linalg.norm(r[j,:]) for j in range(Np) ]) )**2
+
     return alpha * np.sqrt( r1 - r2 )
 
-def choose_dt(h,V,F,alpha=1):
+def choose_dt(h,V,F,par,alpha=.1):
     """ choose time step
 
-    Parameters
-    ----------
-    h:      smoothing length
-    V:      1D array of particle velocities
-    F:      1D array of forces on particle
-    alpha:  ** factor to multiply result by, default = 1
+    args
+    ----
+    r:      vector  -   position of interest
+    t:      int     -   time index
+    i:      int     -   particle index
+    model:  Series  -   model data
+
+    returns
+    -------
+    vector
     """
 
-    vmax    =   np.max(V)
-    fmax    =   np.max(F)
+    Np      =   model['Np']
+    h       =   model['h'][t]
+    v       =   model['v'][t,:,:]
+    F       =   model['a'][t,:,:] * model['mi']
+
+    vmags   =   np.array([ np.linalg.norm(v[j,:]) for j in range(Np) ])
+    Fmags   =   np.array([ np.linalg.norm(F[j,:]) for j in range(Np) ])
+
+    vmax    =   np.max( vmags )
+    fmax    =   np.max( Fmags )
 
     t1      =   h / vmax
     t2      =   np.sqrt( h / fmax )
     tmin    =   np.min( t1 , t2 )
-    return alpha * tmin
 
-# #===============================================================================
-# """ Setting up Model """
-# #-------------------------------------------------------------------------------
-#
-# def model_params(Np,Mc,T,frac_H,frac_He,Nt=1000):
-#     """ set up model by creating a dictionary
-#     of model values
-#
-#     Parameters
-#     ----------
-#     d:      number of dimentions
-#     Np:     number of particles
-#     Mc:     Mass of cloud [solar mass]
-#
-#     Returns
-#     -------
-#     dictionary
-#     """
-#
-#     # need to figure out
-#     k           =   1
-#     n           =   1
-#
-#     # construct arrays
-#     R           =   np.zeros((Nt,Np,3))
-#     dt          =   np.zeros(Nt)
-#     TIME        =   np.zeros_like(dt)
-#     h           =   np.zeros_like(dt)
-#     rho         =   np.zeros((Nt,Np))
-#     P           =   np.zeros_like(rho)
-#
-#     # scalar values
-#     Mc          /=  solarM.value
-#     mu          =   average_particle_mass(frac_H,frac_He)
-#     mi          =   Mc/Np
-#     r_jean      =   dac.Jean_radius_M(Mc,mu,T)
-#
-#     # initialize arrays
-#     X,Y,Z       =   random_particle_placement(Np,r_jean)
-#     R[0,:,0]    =   X
-#     R[0,:,1]    =   Y
-#     R[0,:,2]    =   Z
-#     # # dt[0]       =   NotImplemented
-#     TIME[0]     =   0
-#     h[0]        =   choose_h(R[0,:,:])
-#     rho[0]      =   np.array([ density(Mc,Np,R[0,:,:],R[0,i,:],h[0]) for i in range(Np) ])
-#     P[0]        =   pressure(k,rho[0],n)
-#
-#     dic      =   {'Np':     Np,
-#                  'temp0':   T,
-#                  'frac_H':  frac_H,
-#                  'frac_He': frac_He,
-#                  'Mc':      Mc,
-#                  'mu':      mu,
-#                  'mi':      mi,
-#                  'r_jean':  r_jean,
-#                  'R':       R,
-#                 #  'dt':      dt,
-#                  'TIME':    TIME,
-#                  'h':       h,
-#                  'rho':     rho,
-#                  'P':       P}
-#
-#     # convert dictionary to panda Series
-#     model   =   pd.Series(dic)
-#     return model
+    return alpha * tmin
