@@ -4,9 +4,14 @@ from djak.constants import SI, solarM, pc, Myr, gr
 import djak.astro.cloud as dac
 import pdb
 import pandas as pd
+from scipy.special import erf
 
 #===============================================================================
-""" Initializing Functions """
+"""
+Initializing Functions
+f(p) & f(model)
+no returns, only initilizes model
+"""
 #-------------------------------------------------------------------------------
 
 def average_particle_mass(p):
@@ -34,6 +39,10 @@ def initial_rotation_vectors(model):
     args
     ----
     model:  Series   -   model data
+
+    returns
+    -------
+    None - initializes model
     """
 
     Np      =   model['Np']
@@ -41,6 +50,7 @@ def initial_rotation_vectors(model):
 
     omag    =   Rj**(-.56) * 10**(.34) * 1e-14
     ohats   =   np.zeros(( Np , 3 ))
+    ohats[:,2] = 1
 
     Omega0  =   omag * ohats
 
@@ -53,6 +63,10 @@ def initial_SP_placement(model):
     args
     ----
     model:  Series   -   model data
+
+    returns
+    -------
+    None - initializes model
     """
 
     Np      =   model['Np']
@@ -64,13 +78,13 @@ def initial_SP_placement(model):
     phi     =   np.random.rand(Np) * 2*np.pi
 
     # convert spherical coordinates to cartesian
-    x       =   radius * np.sin(theta) * np.cos(phi)
-    y       =   radius * np.sin(theta) * np.sin(phi)
-    z       =   radius * np.cos(theta)
+    X       =   radius * np.sin(theta) * np.cos(phi)
+    Y       =   radius * np.sin(theta) * np.sin(phi)
+    Z       =   radius * np.cos(theta)
 
-    r0      =   np.vstack((x,y,z)).T
+    R0      =   np.vstack((X,Y,Z)).T
 
-    model['r'][0,:,:]   =   r0
+    model['R'][0,:,:]   =   R0
 
 def initial_SP_velocities(model):
     """ find initial velocities
@@ -80,24 +94,28 @@ def initial_SP_velocities(model):
     args
     ----
     model:  Series  -   model data
+
+    returns
+    -------
+    None - initializes model
     """
 
     Np      =   model['Np']
     disp    =   model['disp']
-    r0      =   model['r'][0,:,:]
+    R0      =   model['R'][0,:,:]
     Omega0  =   model['Omega'][0,:,:]
 
-    vrot    =   np.array([ np.cross( Omega0[i] , r0[i] ) for i in range(Np) ])
-    vrotx   =   np.array([ np.dot( vrot[i] , np.array([ 1 , 0 , 0 ]) ) for i in range(Np) ])
-    vroty   =   np.array([ np.dot( vrot[i] , np.array([ 0 , 1 , 0 ]) ) for i in range(Np) ])
+    Vrot    =   np.array([ np.cross( Omega0[i] , R0[i] ) for i in range(Np) ])
+    Vrotx   =   np.array([ np.dot( Vrot[i] , np.array([ 1 , 0 , 0 ]) ) for i in range(Np) ])
+    Vroty   =   np.array([ np.dot( Vrot[i] , np.array([ 0 , 1 , 0 ]) ) for i in range(Np) ])
 
-    vx      =   np.random.rand(Np) * disp + vrotx
-    vy      =   np.random.rand(Np) * disp + vroty
-    vz      =   np.random.rand(Np) * disp
+    Vx      =   np.random.rand(Np) * disp + Vrotx
+    Vy      =   np.random.rand(Np) * disp + Vroty
+    Vz      =   np.random.rand(Np) * disp
 
-    v0      =   np.vstack((vx,vy,vz)).T
+    V0      =   np.vstack((Vx,Vy,Vz)).T
 
-    model['v'][0,:,:]   =   v0
+    model['V'][0,:,:]   =   V0
 
 def polytropic_pressure_constant(model):
     """ find the polytropic pressure constant
@@ -109,6 +127,10 @@ def polytropic_pressure_constant(model):
     args
     ----
     model:  Series  -   model data
+
+    returns
+    -------
+    None - initializes model
     """
 
     k       =   SI['k'].value
@@ -119,10 +141,11 @@ def polytropic_pressure_constant(model):
     n       =   model['n']
     mu      =   model['mu']
     rho0    =   model['rho'][0,:]
+    Np      =   model['Np']
 
     V       =   (4/3) * np.pi * Rj**3
 
-    K       =  ( Mc / mu) * ( k * T0 / V ) * 1/rho0**( 1 + 1/n )
+    K       =   np.array([ ( Mc / mu) * ( k * T0 / V ) * 1/rho0[i]**( 1 + 1/n ) for i in range(Np) ])
 
     model['K']  =   K
 
@@ -149,20 +172,41 @@ def r_vec(ri,rj):
     rhat    =   r / rmag
     return rmag,rhat
 
-# def gradient():
-#     """ find the gradient of a vector
-#
-#     Parameters
-#     ----------
-#
-#
-#     Returns
-#     -------
-#     vector array
-#     """
+def density_r(r,t,i,model):
+    """ find density of SPH
+
+    args
+    ----
+    r:      vector  -   position of interest
+    t:      int     -   time index
+    i:      int     -   particle index
+    model:  Series  -   model data
+
+    returns
+    -------
+    scalar
+    """
+
+    mi      =   model['mi']
+    Rt      =   model['R'][t,:,:]
+    h       =   model['h'][t]
+    Np      =   model['Np']
+
+    # mnras181-0375.pdf (2.5)
+    total   =   0
+    for j in range(Np):
+        rj      =   Rt[j,:]
+        total   +=  kernal_gauss(r,rj,h)
+
+    rho     =   mi * total
+    return rho
 
 #===============================================================================
-""" Kernal Smoothing """
+"""
+Kernal Smoothing
+f(ri,rj,h)
+smoothing method for model - Gaussian
+"""
 #-------------------------------------------------------------------------------
 
 def kernal_gauss(ri,rj,h):
@@ -179,6 +223,7 @@ def kernal_gauss(ri,rj,h):
     scalar
     """
 
+    # mnras181-0375.pdf (2.10 i)
     rmag = np.linalg.norm( ri - rj )
 
     return ( h * np.sqrt(np.pi) )**(-3) * np.exp( -rmag**2 / h**2 )
@@ -198,15 +243,51 @@ def gradient_kernal_gauss(ri,rj,h):
     vector
     """
 
+    # derived from mnras181-0375.pdf (2.10 i)
+    uj,ujhat=   r_vec(ri,rj)
     W       =   kernal_gauss(ri,rj,h)
-    return (2 / h**2) * W * rj
+    return (2 / h**2) * W * ujhat
 
 #===============================================================================
-""" Cloud Physics """
+"""
+Cloud Physics
+f(t,i,model)
+"""
 #-------------------------------------------------------------------------------
 
-def density(r,rdot,t,i,model):
+def density(t,model):
     """ find density of SPH
+
+    args
+    ----
+    t:      int     -   time index
+    i:      int     -   particle index
+    model:  Series  -   model data
+
+    returns
+    -------
+    None -  fills in model at time t
+    """
+
+    mi      =   model['mi']
+    Rt      =   model['R'][t,:,:]
+    h       =   model['h'][t]
+    Np      =   model['Np']
+
+    for i in range(Np):
+        ri      =   Rt[i,:]
+        # mnras181-0375.pdf (2.5)
+        total   =   0
+        for j in range(Np):
+            rj      =   Rt[j,:]
+            total   +=  kernal_gauss(ri,rj,h)
+
+        model['rho'][t,i]   =   mi * total
+
+def gradient_density(t,model):
+    """ find the density gradient
+    calculated by hand
+    multipy rho by -(2/h^2) and sum uj vectors
 
     args
     ----
@@ -217,24 +298,25 @@ def density(r,rdot,t,i,model):
 
     returns
     -------
-    scalar
+    None - fills in model at time t
     """
 
-    Mc      =   model['Mc']
     Np      =   model['Np']
-    rt      =   model['r'][t,:,:]
+    Rt      =   model['R'][t,:,:]
     h       =   model['h'][t]
+    mi      =   model['mi']
 
-    # mnras181-0375.pdf
-    total   =   0
-    for j in range(Np):
-        rj      =   rt[j,:]
-        total   +=  kernal_gauss(r,rj,h)
+    # derived from mnras181-0375.pdf (2.5)
+    for i in range(Np):
+        ri      =   Rt[i,:]
+        total   =   0
+        for j in range(Np):
+            if j != i:
+                rj      =   Rt[j,:]
+                total   +=  gradient_kernal_gauss(ri,rj,h)
+        model['grad_rho'][t,i,:]    =   mi * total
 
-    rho     =   (Mc/Np) * total
-    return rho
-
-def pressure(r,rdot,t,i,model):
+def pressure(t,model):
     """ find the pressure of polytropic fluid
 
     args
@@ -249,53 +331,26 @@ def pressure(r,rdot,t,i,model):
     scalar
     """
 
-    K       =   model['K'][i]
+    # pmocz_sph.pdf (2)
+    K       =   model['K'][:]
     n       =   model['n']
-    rho     =   model['rho'][t,i]
+    rhot    =   model['rho'][t,:]
 
-    return K * rho**( 1 + 1/n )
-
-def gradient_density(r,rdot,t,i,model):
-    """ find the density gradient
-    calculated by hand
-    multipy rho by -(2/h^2) and sum uj vectors
-
-    args
-    ----
-    r:      vector  -   position of interest
-    t:      int     -   time index
-    i:      int     -   particle index
-    model:  Series  -   model data
-
-    returns
-    -------
-    vector
-    """
-
-    Np      =   model['Np']
-    rt      =   model['r'][t,:,:]
-    h       =   model['h'][t]
-    rho     =   model['rho'][t,i]
-
-    total   =   0
-    for j in range(Np):
-        rj      =   rt[j,:]
-        uj      =   r - rj
-        total   +=  uj
-
-    return - ( 2 / h**2 ) * rho * total
+    model['P'][t,:]   =   K * rhot**( 1 + 1/n )
 
 #===============================================================================
-""" Equations of Motion """
+"""
+Equations of Motion
+f(t,i,model)
+"""
 #-------------------------------------------------------------------------------
 
-def acc_gravity(r,rdot,t,i,model):
+def acc_gravity(t,i,model):
     """ find acceleration from Gaussian smoothing
     gravitational potential
 
     args
     ----
-    r:      vector  -   position of interest
     t:      int     -   time index
     i:      int     -   particle index
     model:  Series  -   model data
@@ -305,31 +360,33 @@ def acc_gravity(r,rdot,t,i,model):
     vector
     """
 
-    G       =   SI['G']
-    rt      =   model['r'][t,:,:]
+    G       =   SI['G'].value
+    Rt      =   model['R'][t,:,:]
     Mc      =   model['Mc']
     Np      =   model['Np']
     h       =   model['h'][t]
-    f       =   1 / h**2
 
+    # derived from mnras181-0375.pdf (2.21)
+    f       =   1 / h**2
+    ri      =   Rt[i,:]
     total   =   0
     for j in range(Np):
-        u           =   r - rt[j]
-        uj,ujhat    =   r_vec(u)
-        one         =   ( 2 / uj ) * np.sqrt( f / np.pi )
-        two_1       =   np.exp( -f * uj**2 )
-        two_2       =   np.sqrt( np.pi / f ) / ( 2 * uj ) * erf( np.sqrt(f) * uj )
-        two         =   two_1 - two_2
-        total       +=  one * two * ujhat
+        if j != i:
+            rj          =   Rt[j,:]
+            uj,ujhat    =   r_vec(ri,rj)
+            one         =   ( 2 / uj ) * np.sqrt( f / np.pi )
+            two_1       =   np.exp( -f * uj**2 )
+            two_2       =   np.sqrt( np.pi / f ) / ( 2 * uj ) * erf( np.sqrt(f) * uj )
+            two         =   two_1 - two_2
+            total       +=  one * two * ujhat
 
     return - ( G * Mc / Np ) * total
 
-def acc_polytrope_pressure(r,rdot,t,i,model):
+def acc_polytrope_pressure(t,i,model):
     """ acceleration from polytropic pressure
 
     args
     ----
-    r:      vector  -   position of interest
     t:      int     -   time index
     i:      int     -   particle index
     model:  Series  -   model data
@@ -339,19 +396,19 @@ def acc_polytrope_pressure(r,rdot,t,i,model):
     vector
     """
 
+    # mnras181-0375.pdf (3.1)
     n           =   model['n']
-    rho         =   model['rho'][t,i]
-    grad_rho    =   model['grad_rho'][t,i,:]
+    rhoi        =   model['rho'][t,i]
+    grad_rhoi   =   model['grad_rho'][t,i,:]
     K           =   model['K'][i]
 
-    return K * rho**( 1/n - 1 ) * ( grad_rho / n ) * ( 1 + n )
+    return K * rhoi**( 1/n - 1 ) * ( grad_rhoi / n ) * ( 1 + n )
 
-def acc_centrifugal(r,rdot,t,i,model):
+def acc_centrifugal(t,i,model):
     """ acceleration from centrifugal force
 
     args
     ----
-    r:      vector  -   position of interest
     t:      int     -   time index
     i:      int     -   particle index
     model:  Series  -   model data
@@ -361,16 +418,18 @@ def acc_centrifugal(r,rdot,t,i,model):
     vector
     """
 
-    Omega   =   model['Omega'][t,i,:]
+    # mnras181-0375.pdf (3.1)
+    Np      =   model['Np']
+    Omegati =   model['Omega'][t,i,:]
+    Rti     =   model['R'][t,i,:]
 
-    return np.cross( Omega , np.cross(Omega,r) )
+    return np.cross( Omegati , np.cross(Omegati,Rti) )
 
-def acc_coriolis(r,rdot,t,i,model):
+def acc_coriolis(t,i,model):
     """ acceleration from coriolis force
 
     args
     ----
-    r:      vector  -   position of interest
     t:      int     -   time index
     i:      int     -   particle index
     model:  Series  -   model data
@@ -380,11 +439,14 @@ def acc_coriolis(r,rdot,t,i,model):
     vector
     """
 
-    Omega   =   model['Omega'][t,i,:]
+    # mnras181-0375.pdf (3.1)
+    Np      =   model['Np']
+    Omegati =   model['Omega'][t,i,:]
+    Vti     =   model['V'][t,i,:]
 
-    return 2 * np.cross( rdot , Omega )
+    return 2 * np.cross( Vti , Omegati )
 
-def acc_damping(r,rdot,t,i,model):
+def acc_damping(t,i,model):
     """ acceleration from internal friction
 
     args
@@ -399,9 +461,12 @@ def acc_damping(r,rdot,t,i,model):
     vector
     """
 
+    # mnras181-0375.pdf (3.1)
+    Np          =   model['Np']
     Lambda      =   model['Lambda']
+    Vti         =   model['V'][t,i,:]
 
-    return Lambda * rdot
+    return Lambda * Vti
 
 # def acc_magnetic(J,B,rho):
 #     """ acceleration from magnetic force
@@ -419,8 +484,8 @@ def acc_damping(r,rdot,t,i,model):
 #     raise NotImplementedError
 #     return np.cross( J , B ) / rho
 
-def acc_total(r,rdot,t,i,model):
-    """ returns total acceleration of particle
+def acc_total(t,model):
+    """ finds total acceleration of particle
 
     args
     ----
@@ -431,23 +496,37 @@ def acc_total(r,rdot,t,i,model):
 
     returns
     -------
-    vector
+    None - updates model at time t
     """
 
-    damping     =   acc_damping(r,rdot,t,i,model)
-    pressure    =   acc_polytrope_pressure(r,rdot,t,i,model)
-    gravity     =   acc_gravity(r,rdot,t,i,model)
-    centrifugal =   acc_centrifugal(r,rdot,t,i,model)
-    coriolis    =   acc_coriolis(r,rdot,t,i,model)
-    magnetic    =   0
+    Np      =   model['Np']
+    for i in range(Np):
 
-    return - (damping + pressure + gravity + centrifugal + coriolis) + magnetic
+        # damping     =   acc_damping(t,i,model)
+        pressure    =   acc_polytrope_pressure(t,i,model)
+        gravity     =   acc_gravity(t,i,model)
+        centrifugal =   acc_centrifugal(t,i,model)
+        coriolis    =   acc_coriolis(t,i,model)
+        magnetic    =   0
+
+        # A           =   - (damping + pressure + gravity + centrifugal + coriolis) + magnetic
+        # A           =   - (pressure + gravity + centrifugal + coriolis) + magnetic
+        A           =   - gravity
+        model['A'][t,i,:]       =   A
+        model['a_grav'][t,i,:]  =   gravity
+        model['a_pres'][t,i,:]  =   pressure
+        model['a_cent'][t,i,:]  =   centrifugal
+        model['a_cori'][t,i,:]  =   coriolis
+        model['a_magn'][t,i,:]  =   magnetic
 
 #===============================================================================
-""" Choosing dt and h """
+"""
+Choosing dt and h
+f(t,model)
+h and dt are consistent for all particles in time slice """
 #-------------------------------------------------------------------------------
 
-def choose_h(r,rdot,t,i,model):
+def choose_h(t,model):
     """ choose smoothing length
     another method could be to choose h
     for each particle such that there are
@@ -456,53 +535,55 @@ def choose_h(r,rdot,t,i,model):
 
     args
     ----
-    r:      vector  -   position of interest
     t:      int     -   time index
-    i:      int     -   particle index
     model:  Series  -   model data
 
     returns
     -------
-    vector
+    None - updates model
     """
 
-    r       =   model['r'][t,:,:]
+    # pmocz_sph.pdf (20)
+    R       =   model['R'][t,:,:]
     Np      =   model['Np']
     alpha   =   model['alpha']
 
-    r1      =   np.average( np.array([ np.linalg.norm(r[j,:])**2 for j in range(Np) ]) )
-    r2      =   np.average( np.array([ np.linalg.norm(r[j,:]) for j in range(Np) ]) )**2
+    r1      =   np.average( np.array([ np.linalg.norm(R[j,:])**2 for j in range(Np) ]) )
+    r2      =   np.average( np.array([ np.linalg.norm(R[j,:]) for j in range(Np) ]) )**2
 
-    return alpha * np.sqrt( r1 - r2 )
+    h       =   alpha * np.sqrt( r1 - r2 )
+    model['h'][t]  =   h
 
-def choose_dt(h,V,F,par,alpha=.1):
+def choose_dt(t,model):
     """ choose time step
 
     args
     ----
-    r:      vector  -   position of interest
     t:      int     -   time index
-    i:      int     -   particle index
     model:  Series  -   model data
 
     returns
     -------
-    vector
+    None - updates model
     """
 
+    # pmocz_sph.pdf (19)
     Np      =   model['Np']
     h       =   model['h'][t]
-    v       =   model['v'][t,:,:]
-    F       =   model['a'][t,:,:] * model['mi']
+    V       =   model['V'][t,:,:]
+    F       =   model['A'][t,:,:] * model['mi']
+    alpha   =   model['alpha']
 
-    vmags   =   np.array([ np.linalg.norm(v[j,:]) for j in range(Np) ])
-    Fmags   =   np.array([ np.linalg.norm(F[j,:]) for j in range(Np) ])
+    vmags   =   np.array([ np.linalg.norm(V[j,:]) for j in range(Np) ])
+    fmags   =   np.array([ np.linalg.norm(F[j,:]) for j in range(Np) ])
 
     vmax    =   np.max( vmags )
-    fmax    =   np.max( Fmags )
+    fmax    =   np.max( fmags )
 
     t1      =   h / vmax
     t2      =   np.sqrt( h / fmax )
-    tmin    =   np.min( t1 , t2 )
+    tmin    =   min( t1 , t2 )
 
-    return alpha * tmin
+    dt      =   alpha * tmin
+    model['dt'][t]  =   dt
+    print(t1,t2,dt)

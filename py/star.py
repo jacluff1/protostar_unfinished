@@ -10,8 +10,8 @@ import djak.astro.cloud as dac
 #-------------------------------------------------------------------------------
 
 # Assumed values
-Np      =   1000            # number of SPH particles
-Nt      =   1000            # number of time steps
+Np      =   100             # number of SPH particles
+Nt      =   200             # number of time steps
 Mc      =   1/solarM.value  # mass of cloud [solar mass -> kg]
 T0      =   15              # temp of cloud [K]
 frac_H  =   .75             # fraction of particles that are hydrogen
@@ -50,15 +50,20 @@ def construct_model():
 
     # create empty arrays
     # time , particle , dimention
-    r       =   np.zeros(( Nt , Np , 3 ))       # SPH particle posisitons
-    v       =   np.zeros_like(r)                # SPH particle velocities
-    a       =   np.zeros_like(r)                # SPH particle accelerations
-    Omega   =   np.zeros_like(r)                # SPH particle rotation vectors
-    grad_rho=   np.zeros_like(r)                # SPH density gradients
+    R       =   np.zeros(( Nt , Np , 3 ))       # SPH particle posisitons
+    V       =   np.zeros_like(R)                # SPH particle velocities
+    A       =   np.zeros_like(R)                # SPH particle accelerations
+    a_grav  =   np.zeros_like(R)
+    a_pres  =   np.zeros_like(R)
+    a_cent  =   np.zeros_like(R)
+    a_cori  =   np.zeros_like(R)
+    a_magn  =   np.zeros_like(R)
+    Omega   =   np.zeros_like(R)                # SPH particle rotation vectors
+    grad_rho=   np.zeros_like(R)                # SPH density gradients
 
     # time , particle
     rho     =   np.zeros(( Nt , Np ))           # SPH particle mass densities
-    p       =   np.zeros_like(rho)              # SPH particle pressure
+    P       =   np.zeros_like(rho)              # SPH particle pressure
 
     # time
     time    =   np.zeros( Nt )                  # time
@@ -72,13 +77,18 @@ def construct_model():
     d['mu']         =   mu
     d['mi']         =   mi
     d['Rj']         =   Rj
-    d['r']          =   r
-    d['v']          =   v
-    d['a']          =   a 
+    d['R']          =   R
+    d['V']          =   V
+    d['A']          =   A
+    d['a_grav']     =   a_grav
+    d['a_pres']     =   a_pres
+    d['a_cent']     =   a_cent
+    d['a_cori']     =   a_cori
+    d['a_magn']     =   a_magn
     d['Omega']      =   Omega
     d['grad_rho']   =   grad_rho
     d['rho']        =   rho
-    d['p']          =   p
+    d['P']          =   P
     d['time']       =   time
     d['h']          =   h
     d['dt']         =   dt
@@ -91,70 +101,53 @@ def construct_model():
 
 def initialize_model(model):
 
+    Np      =   model['Np']
+
+    # Initialize Functions
     aux.initial_rotation_vectors(model)
     aux.initial_SP_placement(model)
     aux.initial_SP_velocities(model)
 
+    # Choosing dt and h
+    aux.choose_h(0,model)
 
+    # Cloud Physics
+    aux.density(0,model)
+    aux.gradient_density(0,model)
+    aux.polytropic_pressure_constant(model)
+    aux.pressure(0,model)
 
+    # Equations of Motion
+    aux.acc_total(0,model)
 
-
-    # # 2D            -   initial rotation vectors
-    # Omega0          =   aux.initial_rotation_vectors(d)
-    # d['Omega0']     =   Omega0
-    #
-    # # 2D            -   initial SP placement
-    # R0              =   aux.initial_SP_placement(d)
-    # d['R0']         =   R0
-    #
-    # # 2D            -   initial SP speed
-    # V0              =   aux.initial_SP_velocities(par)
-    # d['V0']         =   V0
-    #
-    # # scalar        -   initial smoothing length
-    # h0              =   aux.choose_h(R0)
-    # par['h0']       =   h0
-    #
-    # # 1D            -   initial mass density
-    # rho0            =   np.array([ aux.density(R0,R0[j],h0,par) for j in range(Np) ])
-    # par['rho0']     =   rho0
-    #
-    # # 2D            -   initial density gradients
-    # grad_rho0       =   np.array([ aux.gradient_density(R0,R0[j],h0,par) for j in range(Np) ])
-    # par['grad_rho0']=   grad_rho0
-    #
-    # # 1D            -   polytropic pressure constant
-    # Ki              =   aux.polytropic_pressure_constant(par)
-    # par['Ki']       =   Ki
-    #
-    # # 1D            -   initial politripic pressure
-    # P0              =   aux.pressure(rho0,par)
-    # par['P0']       =   P0
-    #
-    # # 2D            -   inital forces on SPH particles
-    # F0              =   np.array([ aux.acc_particle(R0,V0,rho0,grad_rho0,Omega0,h0,j,par) for j in range(Np) ])
-    # par['F0']       =   F0
-    #
-    # # scalar        -   initial time step
-    # dt0             =   aux.choose_dt(h0,V0,F0)
-    # par['dt0']      =   dt0
-    #
-    return
+    # Choosing dt and h
+    aux.choose_dt(0,model)
 
 #===============================================================================
 """ Integrate Constructed Model over Time """
 #-------------------------------------------------------------------------------
 
-def integrate_model(par):
-    # """ carry out time evelution of model
-    #
-    # Parameters
-    # ----------
-    # par:    dictionary of model parmaeters
-    #
-    # Returns
-    # -------
-    # panda Series of important data values and arrays
-    # """
+def integrate_model():
 
-    return
+    model       =   construct_model()
+    initialize_model(model)
+
+    return model
+
+#===============================================================================
+""" Print Test Results """
+#-------------------------------------------------------------------------------
+
+def acc_test(model):
+
+    Np      =   model['Np']
+
+    def test_key(key):
+        A       =   model[key][0,:,:]
+        A1      =   np.array([ np.linalg.norm( A[i,:]) for i in range(Np) ])
+        return np.average(A1)
+
+    print("grav",test_key('a_grav'))
+    print("pres",test_key('a_pres'))
+    print("cent",test_key('a_cent'))
+    print("cori",test_key('a_cori'))

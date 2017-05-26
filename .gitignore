@@ -4,6 +4,7 @@ $ git status
 **.pyc
 **.npy
 **.pdf
+**.mp4
 
 # ignore files
 __pycache__/**
