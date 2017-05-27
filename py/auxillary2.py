@@ -241,3 +241,78 @@ def leap_frog(model):
         pressure(t,model)
         acceleration(t,model)
         choose_dt(t,model)
+
+#===============================================================================
+""" auxillary plotting functions """
+#-------------------------------------------------------------------------------
+
+def density_xy(x,y,t,model):
+    """ pmocz_sph.pdf (15) """
+
+    Np      =   model['Np']
+    Rt      =   model['pos'][t,:,:]
+    mi      =   model['mi']
+    h       =   model['h'][t]
+
+    r       =   np.array([ x , y , 0 ])
+
+    W       =   0
+    for j in range(Np):
+        rj  =   Rt[j,:]
+        if np.array_equal(r,rj) == False:
+            uj      =   r - rj
+            W       +=  kernal_gauss(uj,h)
+    return mi * W
+
+def generate_contour_images(pp,model):
+
+    # pull model data (model)
+    Nt          =   model['Nt']
+    Np          =   model['Np']
+    R           =   model['pos']
+
+    # pull plot parameters (pp)
+    Nx          =   pp['Nx']
+    logscale    =   pp['logscale']
+
+    # create grid
+    rlim        =   np.max( np.array([ np.linalg.norm( R[0,i,:] ) for i in range(Np) ]) )
+    X,Y         =   [ np.linspace(-rlim,rlim,Nx) for i in range(2) ]
+    X,Y         =   np.meshgrid(X,Y)
+
+    # # create empty 3D array for images
+    # images      =   np.zeros(( Nt , Nx , Nx ))
+    #
+    # # fill in images array
+    # for t in range(Nt):
+    #     Z               =   density_xy(X,Y,t,model)
+    #     if logscale:    Z   =   np.log10(Z)
+    #     images[t,:,:]   =   Z
+
+    # np.save('../data/images_Np%s_Nt%s.npy' % (Np,Nt), images)
+    np.save('../data/Xp_Np%s_Nt%s.npy' % (Np,Nt), X)
+    np.save('../data/Yp_Np%s_Nt%s.npy' % (Np,Nt), Y)
+    # return Xp,Yp,images
+
+
+
+# def map_grid(X,Y,RHO,alpha=1.5,Ng=1000):
+#     """ sets 2D image to grid
+#     https://matplotlib.org/examples/pylab_examples/griddata_demo.html
+#
+#     Parameters
+#     ----------
+#     X:  1D x-axis data
+#     Y:  1D y-axis data
+#     M:  1D particle mass data
+#
+#     Returns
+#     -------
+#     tuple of X,Y,Z arrays
+#     """
+#
+#     rmax    =   max( np.max(X) , np.max(Y) ) * alpha
+#     Xp,Yp   =   [ np.linspace(-rmax,rmax,Ng) for i in range(2) ]
+#     Zp      =   griddata(X, Y, RHO, Xp, Yp, interp='linear')
+#
+#     return Xp,Yp,Zp

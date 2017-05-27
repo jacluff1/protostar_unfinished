@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import auxillary2 as aux
+import plot2 as plot
 
 def construct_model():
 
@@ -36,7 +37,7 @@ def construct_model():
     model       =   pd.Series(d)
 
     # initialize
-    model['h'][0]   =   .04 / np.sqrt( d['Np']/1000 )
+    model['h'][0]   =   .04 / np.sqrt( d['Np'] / 1000 )
     model['dt'][0]  =   .04
 
     aux.Lambda(model)
@@ -47,6 +48,32 @@ def construct_model():
 
     # integrate
     aux.leap_frog(model)
-    model.to_pickle('model')
+    model.to_pickle('../data/model')
 
     return model
+
+def results(overWrite     =   False,\
+            scatter       =   True,\
+            contour       =   True,\
+            movie_contour =   True,\
+            saveA         =   True):
+
+    if overWrite:
+        print("\nconstructing model...")
+        model   =   construct_model()
+    else:
+        model   =   pd.read_pickle('../data/model')
+
+    if scatter:
+        print("\nmaking scatter plots...")
+        plot.scatter_3D(0,model,saveA=saveA)
+        plot.scatter_3D(399,model,saveA=saveA)
+
+    if contour:
+        print("\nmaking contour plots...")
+        plot.contourf_2D(0,model,saveA=saveA)
+        plot.contourf_2D(399,model,saveA=saveA)
+
+    if movie_contour:
+        print("\nmaking contour movie...")
+        plot.movie_contourf(model,saveA=saveA)

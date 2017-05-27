@@ -14,38 +14,15 @@ import pdb
 """ plotting parameters """
 #-------------------------------------------------------------------------------
 
-pp  =   {'size':    (15,15),    # figsize
-         'fs':      20,         # fontsize
-         'cmap':    cm.magma,   # color map
-         'N':       100,        # length of plotting arrays
-         'interval':100,        # interval
-         'dpi':     400         # resolution
-         }
-
-#===============================================================================
-""" misc """
-#-------------------------------------------------------------------------------
-
-def map_grid(X,Y,RHO):
-    """ sets 2D image to grid
-    https://matplotlib.org/examples/pylab_examples/griddata_demo.html
-
-    Parameters
-    ----------
-    X:  1D x-axis data
-    Y:  1D y-axis data
-    M:  1D particle mass data
-
-    Returns
-    -------
-    tuple of X,Y,Z arrays
-    """
-
-    rmax    =   max( np.max(X) , np.max(Y) )
-    Xp,Yp   =   [ np.linspace(-rmax,rmax,100) for i in range(2) ]
-    Zp      =   griddata(X, Y, RHO, Xp, Yp, interp='linear')
-
-    return Xp,Yp,Zp
+pp  =   {}
+pp['size']      =   (15,15)     # figsize
+pp['fs']        =   20          # fontsize
+pp['cmap']      =   cm.magma    # color map
+pp['N']         =   100         # length of plotting arrays
+pp['interval']  =   200         # interval
+pp['dpi']       =   400         # resolution
+pp['Nx']        =   1000        # number image bins on single axis
+pp['logscale']  =   True        # logscale images (or not)
 
 #===============================================================================
 """ Profiles """
@@ -86,7 +63,7 @@ def profile_density(Mc,Np,Rt,h):
 """ plotting functions """
 #-------------------------------------------------------------------------------
 
-def scatter_3D(fig,t,model,saveA=True,axis=111):
+def scatter_3D(t,model,saveA=True):
     """ make a 3D scatter plot of
     particles at time t
 
@@ -108,9 +85,9 @@ def scatter_3D(fig,t,model,saveA=True,axis=111):
     limits  =   np.min(RHO),np.max(RHO)
 
     # figure
-    # plt.close('all')
-    # fig     =   plt.figure(figsize=pp['size'])
-    ax      =   fig.add_subplot(axis, projection='3d')
+    plt.close('all')
+    fig     =   plt.figure(figsize=pp['size'])
+    ax      =   plt.subplot(111, projection='3d')
     ax.set_title("%s M$_\odot$ cloud" % Mc, fontsize=pp['fs']+2)
     ax.set_xlabel("x", fontsize=pp['fs'])
     ax.set_ylabel("y", fontsize=pp['fs'])
@@ -128,14 +105,13 @@ def scatter_3D(fig,t,model,saveA=True,axis=111):
     plt.tight_layout()
 
     if saveA:
-        fig.savefig('../plots/scatter_%.2f.png' % Mc)
+        fig.savefig('../plots/scatter_%.2f_%s.png' % (Mc,t) )
         plt.close()
 
     else:
         return ax
 
-
-def contourf_2D(fig,t,model,saveA=True,axis=111):
+def contourf_2D(t,model,saveA=True):
     """ make a 2D contour plot of
     particles at time t
     http://stackoverflow.com/a/23907866
@@ -149,17 +125,29 @@ def contourf_2D(fig,t,model,saveA=True,axis=111):
     # data
     # time        =   model['time'][t]
     Mc          =   model['M']
+    R           =   model['pos'][t,:,:]
+    Np          =   model['Np']
+    Nt          =   model['Nt']
 
-    R           =   model['pos'][t]
-    X,Y         =   [ R[:,e] for e in range(2) ]
-    rho         =   model['rho'][t]
-    Xp,Yp,Zp    =   map_grid(X,Y,rho)
+    try:
+        images      =   np.load('../data/images_Np%s_Nt%s.npy' % (Np,Nt) )
+        Xp          =   np.load('../data/Xp_Np%s_Nt%s.npy' % (Np,Nt) )
+        Yp          =   np.load('../data/Yp_Np%s_Nt%s.npy' % (Np,Nt) )
+        Zp          =   images[t,:,:]
+    except:
+        rlim        =   np.max( np.array([ np.linalg.norm( R[i,:] ) for i in range(Np) ]) )
+        X,Y         =   [ np.linspace(-rlim,rlim,1000) for i in range(2) ]
+        Xp,Yp       =   np.meshgrid(X,Y)
+
+        Zp          =   aux.density_xy(Xp,Yp,t,model)
+        # Zp          =   np.log10(Zp)
+
     limits      =   0,np.max(Zp)
 
     # figure
-    # plt.close('all')
-    # fig     =   plt.figure(figsize=pp['size'])
-    ax      =   fig.add_subplot(axis)
+    plt.close('all')
+    fig     =   plt.figure(figsize=pp['size'])
+    ax      =   plt.subplot(111)
     ax.patch.set_facecolor('black')
     ax.set_title("%s M$_\odot$ cloud" % Mc, fontsize=pp['fs']+2)
     ax.set_xlabel("x", fontsize=pp['fs'])
@@ -177,20 +165,10 @@ def contourf_2D(fig,t,model,saveA=True,axis=111):
     plt.tight_layout()
 
     if saveA:
-        fig.savefig('../plots/contourf_%.2f.png' % Mc)
+        fig.savefig('../plots/contourf_%.2f_%s.png' % (Mc,t) )
         plt.close()
     else:
         return ax
-
-def compare(model):
-
-    fig =   plt.figure(figsize=(30,15))
-    ax1 =   contourf_2D(fig,0,model,saveA=False,axis=221)
-    ax2 =   contourf_2D(fig,399,model,saveA=False,axis=222)
-    ax3 =   scatter_3D(fig,0,model,saveA=False,axis=223)
-    ax4 =   scatter_3D(fig,399,model,saveA=False,axis=224)
-    plt.tight_layout()
-    plt.show()
 
 # def density_profile(model,t,saveA=True):
 #     """ plot density profile at time t
@@ -205,15 +183,22 @@ def compare(model):
 """ movie """
 #-------------------------------------------------------------------------------
 
-def movie_contourf(model,saveA=True):
+def movie_contourf(model,saveA=True,overWrite=False):
 
     Nt          =   model['Nt']
+    Np          =   model['Np']
     M           =   model['M']
-    R           =   model['pos'][0,:,:]
-    X,Y         =   [ R[:,e] for e in range(2) ]
-    rho         =   model['rho']
-    Xp,Yp,Zp    =   map_grid( X , Y , rho[0,:] )
-    limits      =   0,np.max(rho)
+
+    if overWrite:   aux.generate_contour_images(pp,model)
+
+    try:
+        images          =   np.load('../data/images_Np%s_Nt%s.npy' % (Np,Nt) )
+        Xp              =   np.load('../data/Xp_Np%s_Nt%s.npy' % (Np,Nt) )
+        Yp              =   np.load('../data/Yp_Np%s_Nt%s.npy' % (Np,Nt) )
+    except:
+        Xp,Yp,images    =   aux.generate_contour_images(pp,model)
+
+    limits  =   0,np.max(images)
 
     fig     =   plt.figure(figsize=pp['size'])
     ax      =   fig.add_subplot(111)
@@ -240,11 +225,11 @@ def movie_contourf(model,saveA=True):
         Xp,Yp,Zp    =   map_grid( X , Y , rho[t,:] )
 
         ax.cla()
-        ax          =   fig.add_subplot(111)
+        ax.patch.set_facecolor('black')
         im          =   ax.contourf(Xp,Yp,Zp, level=levels, cmap=cmap)
 
         return ax
 
     frames	=	int(Nt)
-    anim = ani.FuncAnimation(fig, animate, frames=frames, blit=False, interval=pp['interval'])
+    anim    =   ani.FuncAnimation(fig, animate, frames=frames, blit=False, interval=pp['interval'])
     anim.save('../plots/star.mp4', writer='ffmpeg', dpi=pp['dpi'])
