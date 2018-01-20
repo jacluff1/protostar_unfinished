@@ -41,6 +41,13 @@ def plot_initial_placement(show=True,save=True):
 
     return X,xmax
 
+def plot_smoothingL(show=True,save=True):
+
+    positions,xmax  =   plot_initial_placement(show=False)
+    smoothingL      =   func.find_smoothingL(positions)
+
+    return smoothingL
+
 def plot_initial_density(size=100,b=.25,show=True,save=True):
 
     X,xmax  =   plot_initial_placement(show=False)
