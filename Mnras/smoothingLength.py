@@ -10,9 +10,9 @@ for key,val in par.items():
 
 def find_smoothingL(positions):
     R       =   func.find_distances(positions)
-    grid    =   GridSearchCV( KernelDensity(), {'bandwidth':np.linspace(0.1, 1.0, 30)}, cv=20)
+    grid    =   GridSearchCV( KernelDensity(), {'bandwidth':np.linspace(0, 1.0, 50)}, cv=20)
     grid.fit(R[:,None])
-    return grid.best_params_
+    return grid.best_params_['bandwidth']
 
 # def find_smoothing_length_constant(positions,b_factor):
 #     r2_av   =   (positions*positions).sum() / N
