@@ -1,4 +1,6 @@
 import numpy as np
+from sklearn.neighbors import KDTree,DistanceMetric
+
 import kernel as kernel
 
 from params import par
@@ -9,18 +11,35 @@ for key,val in par.items():
 "Auxillary Functions"
 #-------------------------------------------------------------------------------
 
-def find_distances(positions):
-    return np.sqrt( (positions*positions).sum(axis=1) )
+def find_distances_pairwise(positions,grid=None):
+    dist    =   DistanceMetric.get_metric('euclidean')
+    if grid == None:
+        return dist.pairwise(positions)
+    if grid != None:
+        return dist.pairwise(grid,positions)
+
+def find_distance_origin(positions):
+    return np.sqrt( (positions**2).sum(axis=1) )
 
 #===============================================================================
-"Gas Equations"
+"Grid Equations"
 #-------------------------------------------------------------------------------
 
-def find_density(position,ppositions,smoothingL,kernel=kernel.kernel_gaussian):
-    total   =   0
-    for j in range(N):
-        total   +=  kernel(position-ppositions[j,:],smoothingL)
-    return m * total
+def find_density_grid(grid,positions,smoothingL,kernel=kernel.kernel_gaus):
+    # find grid
+    # differneces = grid-positions
+    # W = kernel(differences,smoothingL)
+    # sum W along appropriate axis 
+    return NotImplemented
+
+#===============================================================================
+"SPH Equations"
+#-------------------------------------------------------------------------------
+
+def find_density(positions,smoothingL,kernel=kernel.kernel_gaus):
+    return NotImplemented
+
+
 
 #===============================================================================
 "Equations of Motion"
