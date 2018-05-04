@@ -24,3 +24,20 @@ def set_plot_defaults():
 
     # image
     # mpl.rcParams['image.cmap']=cm.hot
+
+# maybe include these later
+# #===============================================================================
+# # units
+# #===============================================================================
+#
+# pc2meter    =   3.086e16            # pc -> meter
+# sm2kg       =   1.99e30             # solar mass -> kilogram
+# myr2s       =   60*60*24*365.25*1e6 # mega year -> second
+#
+# # m^3 kg^-1 s^-2
+# G_const     =   6.67e-11
+#
+# # pc^3 solarMass^-1 Myr^-2
+# G_model     =   G_const * (pc2meter)**(-3) * sm2kg * myr2s**2
+#
+# #===============================================================================

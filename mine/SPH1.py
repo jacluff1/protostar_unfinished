@@ -5,23 +5,8 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.animation as ani
+import scipy.special as special
 import pdb
-
-#===============================================================================
-# units
-#===============================================================================
-
-pc2meter    =   3.086e16            # pc -> meter
-sm2kg       =   1.99e30             # solar mass -> kilogram
-myr2s       =   60*60*24*365.25*1e6 # mega year -> second
-
-# m^3 kg^-1 s^-2
-G_const     =   6.67e-11
-
-# pc^3 solarMass^-1 Myr^-2
-G_model     =   G_const * (pc2meter)**(-3) * sm2kg * myr2s**2
-
-#===============================================================================
 
 class model:
 
@@ -30,15 +15,12 @@ class model:
         print("setting up SPH model...")
 
         # handle default attributes
-        values  =   dict(M=10, N=500, n=3/2, k=0.1, nu=1, kernel='gaussian', n_neighbors=7, initial_distribution='uniform', initial_dispersion=0, initial_omega=0, initial_radius=50, initial_temp=5)
+        values  =   dict(M=2, N=400, n=1, k=0.1, nu=1, alpha=1, beta=2, kernel='gaussian', n_neighbors=7, initial_distribution='uniform', initial_dispersion=0, initial_omega=0, initial_radius=0.75, initial_temp=5)
         values  =   aux.update_values(values,kwargs)
 
         # add initial attributes
         for key in values: setattr(self,key,values[key])
         self.m  =   self.M / self.N
-
-        # update G_model
-        self.G  =   G_model / self.initial_radius**3
 
         # handle other parameters
         particle_preview    =   True
@@ -55,7 +37,7 @@ class model:
         self.velocities =   V
 
         # model constants
-        self.lam    =   self.__get_constant_lambda()
+        self.__add_constant_lambda()
 
         #  initialize time
         self.time   =   0
@@ -66,8 +48,11 @@ class model:
         # preview position
         if particle_preview: self.particle_preview()
 
+    def __add_constant_lambda(self):
+        self.lam    =   2*self.k*(1+self.n)*np.pi**(-3/(2*self.n)) * ((self.M*special.gamma((5/2)+self.n))/(self.initial_radius**3 * special.gamma(1+self.n)) )**(1/self.n) / self.initial_radius**2
+
     #===========================================================================
-    # particle placement options
+    # initial position options
     #===========================================================================
 
     def __uniform_sphere(self):
@@ -76,7 +61,7 @@ class model:
         print("placing particles in sphere with uniform distribution...")
 
         # set up 1D position arrays in SPC
-        U           =   np.random.uniform(0,1,self.N)
+        U           =   np.random.uniform(0,self.initial_radius,self.N)
         COSTHETA    =   np.random.uniform(-1,1,self.N)
 
         R       =   U**(1/3)
@@ -137,13 +122,12 @@ class model:
     # kernel options
     #===========================================================================
 
-    def __W_gauss(self,r,h):
-        # r is magnitute of difference vector
-        return (np.pi*h**2)**(-3/2) * np.exp(-(r/h)**2)
+    def __W_gauss(self,distance_ij,smoothing_length_j):
+        return (np.pi*smoothing_length_j**2)**(-3/2) * np.exp(-(distance_ij/smoothing_length_j)**2)
 
-    def __W_gradient_gauss(self,r,h,W):
-        # r is difference vector
-        return -(2*r/h**2) * W
+    def __dW_gauss(self,distance_ij,vector_ij,smoothing_length_j):
+        W_ij    =   self.__W_gauss(distance_ij,smoothing_length_j)
+        return -(2*vector_ij/smoothing_length_j**2) * W_ij
 
     # add other kernel options
 
@@ -151,7 +135,6 @@ class model:
     # general/standard equations
     #===========================================================================
 
-    # improve nn_relative_positions? get piecewise positions?
     def __update_nearest_neighbors(self):
 
         try:
@@ -160,19 +143,9 @@ class model:
             nbrs = NearestNeighbors(n_neighbors=self.n_neighbors+1).fit(self.positions)
             distances, indices = nbrs.kneighbors(self.positions)
 
-            # get nearest neighbor relative positions
-            pos     =   np.zeros( (self.N, self.n_neighbors, 3) )
-            for i in range(self.N):
-                mask    =   indices[i,:]
-                pos1    =   self.positions[mask]
-                pos_i   =   pos1[0,:]
-                for j,pos_j in enumerate(pos1[1:,:]):
-                    pos[i,j,:]  =   pos_i - pos_j
-
             # add attributes (since nearest neighbor is itself, each particle ignores itself)
-            self.nn_distances           =   distances[:,1:]
-            self.nn_indices             =   indices[:,1:]
-            self.nn_relative_positions  =   pos
+            self.distances  =   distances[:,1:]
+            self.indices    =   indices[:,1:]
 
         except:
             print("error occured, check positions.")
@@ -180,38 +153,71 @@ class model:
 
     def __update_smoothing_lengths(self):
         # Hernquist & Katz (1989) -> have each particle fetch the distance to its furthest neighbor and divide by two.
-        self.smoothing_lengths  =   self.nn_distances[:,-1] / 2
+        self.smoothing_lengths  =   self.distances[:,-1] / 2
 
     def __update_density(self):
-        NotImplemented
+        Array   =   np.zeros(self.N)
+        for i in range(self.N):
+            indices     =   self.indices[i,:]
+            # get distances
+            r           =   self.distances[i,:]
+            # get smoothing lengths
+            h           =   self.smoothing_lengths[indices]
+            for j in range(self.n_neighbors):
+                Array[i]    +=  self.__W_gauss(r[j],h[j])
+        self.densities  =   self.m * Array
 
     def __update_pressure(self):
-        NotImplemented
+        # use polytropic pressure
+        self.pressures  =   self.k * self.densities**(1 + (1/self.n))
 
-    # def __update_temperature(self):
-    #     NotImplemented
+    def __update_acceleration(self):
 
-    #===========================================================================
-    # model constants
-    #===========================================================================
+        # update dependencies
+        self.__update_nearest_neighbors()
+        self.__update_smoothing_lengths()
+        self.__update_density()
+        self.__update_pressure()
 
-    def __get_constant_lambda(self):
-        NotImplemented
+        # create empty array to dump calculations into
+        Array   =   np.zeros( (self.N,3) )
 
-    #===========================================================================
-    # acceleration terms
-    #===========================================================================
-
-    def __gravity(self):
-        A   =   np.zeros( (self.N,3) )
+        # loop through every particle
         for i in range(self.N):
-            for j in range(self.n_neighbors):
-                A[i,:]  +=  self.nn_relative_positions[i,j,:] / self.nn_distances[i,j]**3
-        return -self.G * self.m**2 * A
 
-    #===========================================================================
-    # time step
-    #===========================================================================
+            # select nearest neighbor subset data
+            indices             =   self.indices[i,:]
+            positions           =   self.positions[indices,:]
+            smoothing_lengths   =   self.smoothing_lengths[indices]
+            densities           =   self.densities[indices]
+            pressures           =   self.pressures[indices]
+
+            # iterate over nearest neighbors
+            for j in range(self.n_neighbors):
+
+                # get kernel gradient
+                distance_ij         =   self.distances[i,j]
+                vector_ij           =   self.positions[i,:] - positions[j,:]
+                smoothing_length_j  =   smoothing_lengths[j]
+                dW_ij               =   self.__dW_gauss(distance_ij,vector_ij,smoothing_length_j)
+
+                # get rest of pressure gradient factor
+                factor_ij   =   (self.pressures[i]/self.densities[i]**2) + (pressures[j]/densities[j]**2)
+
+                # subtract pressure contribution of nearest neighbor
+                Array   -=  factor_ij * dW_ij
+
+            # multiply total pressure contributions by particle mass
+            Array[i,:]  *=  self.m
+
+            # subtract basic artificial viscosity
+            Array[i,:]  -=  self.nu * self.velocities[i,:]
+
+            # subtract position (gravity?) term
+            Array[i,:]  -=  self.lam * self.positions[i,:]
+
+        # update attribute
+        self.accelerations  =   Array
 
     def __update_dt(self):
         options =   np.zeros(2)
@@ -225,59 +231,62 @@ class model:
             print("max force = 0")
         self.dt =   0.25 * options[ options > 0 ].min()
 
-    def update_cloud(self):
-
-        # general/standard
-        self.__update_nearest_neighbors()
-        self.__update_smoothing_lengths()
-
-        # acceleration
-        A                   =   self.__gravity()
-        self.accelerations  =   A
-        # print(A[:10,:])
-
-        # update dt
-        self.__update_dt()
-        print("time: ", self.time)
-        self.time   =   self.time + self.dt
+    def __update_temperature(self):
+        NotImplemented
 
     #===========================================================================
     # make movies
     #===========================================================================
 
-    def cloud_movie(self):
+    def cloud_movie(self,**kwargs):
 
+        # handle default parameters
+        # values  =   dict(name='SPH_star.mp4', title='SPH Star Formation', fps=15, dpi=100, N_frames=100)
+        # values  =   aux.update_values(values,kwargs)
+        # for key in values:
+        #     exec("%s=%s" % (key,values[key]) in globals(), locals())
+
+        name    =   'SPH_star.mp4'
+        title   =   'SPH Star Formation'
+        fps     =   15
+        dpi     =   100
+        Nframes =   100
+
+        # set up figure
         fig =   plt.figure()
         ax  =   fig.gca(projection='3d')
         ax.set_aspect(1)
         ax.plot(self.positions[:,0],self.positions[:,1],self.positions[:,2], 'go')
 
+        # set up movie writer
         FFMpegWriter    =   ani.writers['ffmpeg']
-        metadata        =   dict(title='SPH Star Formation', artist='Matplotlib')
-        writer          =   FFMpegWriter(fps=15, metadata=metadata)
+        metadata        =   dict(title=title, artist='Matplotlib')
+        writer          =   FFMpegWriter(fps=fps, metadata=metadata)
 
-        with writer.saving(fig,"SPH.mp4", 100):
-            for t in range(100):
+        # set up data for initial frame
+        self.__update_acceleration()
+        self.__update_dt()
 
+        # write movie
+        with writer.saving(fig, name, dpi):
+            # loop through all frames
+            for t in range(Nframes):
+                print("time: ", self.time)
+
+                # clear previous frame
                 ax.clear()
 
-                self.update_cloud()
+                # update data for frame
+                self.time       =   self.time + self.dt
+                v_half          =   self.velocities + self.accelerations * self.dt
+                self.positions  =   self.positions + v_half * self.dt
+                self.velocities =   0.5 * (self.velocities + v_half)
 
-                V_new   =   self.velocities + self.accelerations * self.dt
-                X_new   =   self.positions + self.velocities * self.dt
+                # update data for next frame
+                self.__update_acceleration()
+                self.__update_dt
 
-                self.velocities =   V_new
-                self.positions  =   X_new
-
-                # positions_half = positions + velocities*(dt/2)
-                # velocities_half = velocities + accelerations*(dt/2)
-                # densities_half = np.array([ find_density(positions_half,i) for i in range(N) ])
-                # pressures_half = find_pressure(densities_half)
-                # accelerations_half = np.array([ find_acceleration(positions_half,velocities_half,densities_half,pressures_half,i) for i in range(N) ])
-                #
-                # positions += velocities_half*dt
-                # velocities += accelerations_half*dt
-
+                # make frame
                 ax.plot(self.positions[:,0],self.positions[:,1],self.positions[:,2], 'go')
                 ax.set_aspect(1)
                 rmax    =   1
